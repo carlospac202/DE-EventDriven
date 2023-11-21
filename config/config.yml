@@ -1,0 +1,4 @@
+user_events:
+  file: 'files/user_events.csv'
+user_profiles:
+  file: 'files/user_profiles.csv'

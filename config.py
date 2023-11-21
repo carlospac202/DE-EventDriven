@@ -35,7 +35,7 @@ class Config:
         :return: None
         """
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        self._yaml_file = os.path.join(current_dir, "config.yml")
+        self._yaml_file = os.path.join(current_dir, "config/config.yml")
         with open(self._yaml_file) as f:
             data = yaml.safe_load(f)
 

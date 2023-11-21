@@ -24,7 +24,8 @@ class EventDriven(Config):
         up_df['signup_date'] = self.parse_dates(up_df['signup_date'])
         up_df['last_login_date'] = self.parse_dates(up_df['last_login_date'])
         up_df['engagement_duration'] = up_df['last_login_date'] - up_df['signup_date']
-        return up_df
+        up_df = up_df.dropna()
+        return up_df.head(5)
 
     def engagement_analysis(self):
         ue_df = self.read_data('user_events')
@@ -76,25 +77,97 @@ class EventDriven(Config):
         return dau, mau, meu, met
 
     def timeline_analysis(self):
+        ue_df = self.read_data('user_events')
         up_df = self.read_data('user_profiles')
+        up_df['signup_date'] = self.parse_dates(up_df['signup_date'])
+
+        # Calculate daily event counts for each user
+        query = """
+            SELECT 
+                   user_id,
+                   COUNT(event_type) AS event_count,
+                   event_date
+            FROM ue_df
+            WHERE user_id = 2
+            GROUP BY user_id, event_date
+        """
+        user_daily_engagement = sqldf(query, locals())
+
+
+        # Plot individual user engagement trends
+        plt.figure(figsize=(10, 6))
+        for user, data in user_daily_engagement.groupby('user_id'):
+            plt.plot(data['event_date'], data['event_count'], label=f'User {user}')
+
+        plt.title('Daily User Engagement Trends')
+        plt.xlabel('Date')
+        plt.ylabel('Number of Events')
+        plt.legend(loc='upper right')
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+
+        # Calculate overall daily event counts (all users combined)
+        overall_daily_event_counts = user_daily_engagement.groupby('event_date')['event_count'].sum()
+
+        # Detect anomalies or patterns in overall engagement
+        rolling_mean = overall_daily_event_counts.rolling(window=7, min_periods=1).mean()
+        rolling_std = overall_daily_event_counts.rolling(window=7, min_periods=1).std()
+
+        # Plot overall engagement with rolling mean and standard deviation
+        plt.figure(figsize=(10, 6))
+        plt.plot(overall_daily_event_counts.index, overall_daily_event_counts, label='Overall Daily Events')
+        plt.plot(rolling_mean.index, rolling_mean, label='Rolling Mean', linestyle='--')
+        plt.fill_between(rolling_std.index, rolling_mean - rolling_std, rolling_mean + rolling_std, alpha=0.3,
+                         label='Rolling Std')
+        plt.title('Overall Daily User Engagement with Rolling Mean and Std Deviation')
+        plt.xlabel('Date')
+        plt.ylabel('Number of Events')
+        plt.legend(loc='upper right')
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    def behavioral_analysis(self):
         ue_df = self.read_data('user_events')
 
-        up_df['signup_date'] = self.parse_dates(up_df['signup_date'])
-        ue_df['event_date'] = self.parse_dates(ue_df['event_date'])
+        # SQL-like query to analyze event type sequences for each user
+        query = """
+            SELECT 
+                   user_id,
+                   GROUP_CONCAT(event_type, ' -> ') AS event_sequence
+            FROM ue_df
+            GROUP BY user_id
+        """
 
-        merged_df = pd.merge(up_df, ue_df, on='user_id', how='inner')
+        user_event_sequences = sqldf(query, locals())
 
-        merged_df['engagement_period'] = (merged_df['event_date'] - merged_df['signup_date']).dt.days // 7
+        # SQL-like query to determine most popular pages
+        query = """
+            SELECT 
+                   page,
+                   COUNT(*) AS page_count
+            FROM ue_df
+            GROUP BY page
+            ORDER BY page_count DESC
+        """
 
-        print(merged_df)
+        popular_pages = sqldf(query, locals())
+
+        return user_event_sequences, popular_pages
+
 
     def process(self):
+        # Adding new feature engagement duration
+        self.logger.info(self.add_engagement_duration())
+
+        # Engagement Analysis
         dau, mau, meu, met = self.engagement_analysis()
-        self.logger.info(met)
-        # self.logger.info(f"Daily Active Users (DAU): {dau}")
-        # self.logger.info(f"Monthly Active Users (MAU):\n {mau}")
 
+        # Timeline Analysis
+        self.logger.info(self.timeline_analysis())
 
-test = EventDriven()
-a = test.process()
-a
+        # Behavioral Analysis
+        df1, df2 = self.behavioral_analysis()
+        self.logger.info(df1)
